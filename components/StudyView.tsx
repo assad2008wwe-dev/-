@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Section, MindMapNode } from '../types';
 import { generateMindMap, generateDiagram, resetApiKey } from '../services/geminiService';
-import { Loader2, ArrowLeft, Image as ImageIcon, BookOpen, Share2, ZoomIn, ZoomOut, Maximize2, AlertTriangle } from 'lucide-react';
+import { Loader2, ArrowLeft, Image as ImageIcon, BookOpen, Share2, ZoomIn, ZoomOut, Maximize2, AlertTriangle, Play } from 'lucide-react';
 import MindMap from './MindMap';
 
 interface Props {
@@ -22,14 +22,15 @@ const StudyView: React.FC<Props> = ({ section, onBack }) => {
     const loadContent = async () => {
       try {
         setError(null);
+        // Only generate Mind Map initially to save Quota
         const data = await generateMindMap(section.content);
         if (mounted) {
           if (data.id === 'error') {
-            setError(data.label); // Use fallback label as error
+            setError(data.label); 
           }
           setMindMapData(data);
           setLoadingMap(false);
-          generateMainImage();
+          // Removed automatic generateMainImage() call to prevent 429 errors
         }
       } catch (e: any) {
         if (mounted) {
@@ -87,6 +88,7 @@ const StudyView: React.FC<Props> = ({ section, onBack }) => {
                 <div className="flex flex-col items-center justify-center h-full">
                     <Loader2 className="w-12 h-12 animate-spin text-rose-500 mb-4" />
                     <p className="text-slate-400">Structuring knowledge...</p>
+                    <p className="text-slate-600 text-xs mt-2">This may take a moment if servers are busy...</p>
                 </div>
             ) : error ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4 p-8 text-center">
@@ -144,17 +146,36 @@ const StudyView: React.FC<Props> = ({ section, onBack }) => {
                                 </button>
                             </>
                         ) : (
-                            <span className="text-slate-600 text-xs">No image</span>
+                            <div className="text-center p-6">
+                                <ImageIcon className="w-10 h-10 text-slate-700 mx-auto mb-2" />
+                                <span className="text-slate-500 text-xs">Visual not generated yet</span>
+                            </div>
                         )}
                     </div>
                 </div>
+                
+                {/* Manual Trigger Button */}
                 <button 
                   onClick={generateMainImage}
-                  disabled={loadingImage}
-                  className="mt-4 w-full py-2.5 rounded-xl border border-slate-700 text-slate-300 text-sm font-medium hover:bg-slate-800 transition-colors"
+                  disabled={loadingImage || !!imageUrl}
+                  className={`mt-4 w-full py-3 rounded-xl border font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                    imageUrl 
+                    ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/10' 
+                    : 'border-rose-500 text-white bg-rose-500 hover:bg-rose-400 shadow-lg shadow-rose-500/20'
+                  }`}
                 >
-                    Generate New Visual
+                    {loadingImage ? (
+                        "Creating..." 
+                    ) : imageUrl ? (
+                        "Visual Generated"
+                    ) : (
+                        <>
+                           <Play className="w-4 h-4 fill-current" />
+                           Generate Visual
+                        </>
+                    )}
                 </button>
+                <p className="text-xs text-slate-500 mt-2 text-center">Click to generate an AI diagram (Uses extra quota)</p>
             </div>
 
             <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-2xl p-5 border border-indigo-500/20">

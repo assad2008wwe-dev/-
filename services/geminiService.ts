@@ -52,42 +52,52 @@ const getClient = () => {
 };
 
 /**
+ * Helper to retry operations on 429 (Quota) errors
+ */
+const retryWithBackoff = async <T>(
+  operation: () => Promise<T>, 
+  retries = 3, 
+  delay = 2000
+): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error: any) {
+    const msg = error.message || '';
+    // Check if error is related to Quota (429) or Overloaded
+    if (retries > 0 && (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota'))) {
+      console.warn(`Quota hit, retrying in ${delay}ms... (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      // Exponential backoff: wait longer next time (2s -> 4s -> 8s)
+      return retryWithBackoff(operation, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
+/**
  * Parses complex API errors into user-friendly messages
  */
 const handleGeminiError = (error: any): Error => {
   let msg = error.message || "An unexpected error occurred";
   
-  // 1. Check for specific status codes in the string
   if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota')) {
-    return new Error("⚠️ High Traffic: Free tier quota exceeded. Please wait 30-60 seconds before trying again.");
+    return new Error("⚠️ High Traffic: Retrying failed. Please wait 1 minute.");
   }
   
   if (msg.includes('API key not valid') || msg.includes('400')) {
     return new Error("Invalid API Key. Please reset your key in settings.");
   }
 
-  // 2. Try to parse raw JSON dump from the error message
-  // The error message from the SDK often contains the full JSON response body
   try {
-    const jsonMatch = msg.match(/\{[\s\S]*\}/); // Find JSON-like object
+    const jsonMatch = msg.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.error) {
-            // Check structured error
-            if (parsed.error.code === 429 || parsed.error.status === 'RESOURCE_EXHAUSTED') {
-                 return new Error("⚠️ High Traffic: Free tier quota exceeded. Please wait 30-60 seconds.");
-            }
-            if (parsed.error.message) {
-                 // Use the inner message if it's cleaner
-                 return new Error(`API Error: ${parsed.error.message}`);
-            }
+        if (parsed.error && parsed.error.message) {
+             return new Error(`API Error: ${parsed.error.message}`);
         }
     }
-  } catch (e) {
-    // Failed to parse, stick to original but truncated if too long
-  }
+  } catch (e) {}
 
-  // Truncate extremely long error messages for UI safety
   if (msg.length > 200) {
       return new Error("A connection error occurred. Please check your internet or API key.");
   }
@@ -131,9 +141,10 @@ export const generateMCQ = async (
     required: ['questions']
   };
 
-  try {
+  const operation = async () => {
+    // Switch to 'gemini-flash-lite-latest' (Flash 2.5 Lite) which is lighter and faster, reducing quota hit
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-lite-latest", 
       contents: `Reference Content:\n${content}\n\nTask: Generate ${count} ${difficulty} level MCQs.`,
       config: {
         responseMimeType: "application/json",
@@ -150,6 +161,11 @@ export const generateMCQ = async (
        throw new Error("Invalid format returned");
     }
     return parsed.questions as Question[];
+  };
+
+  try {
+    // Wrap with retry logic
+    return await retryWithBackoff(operation);
   } catch (error) {
     console.error("MCQ Generation Error:", error);
     throw handleGeminiError(error);
@@ -179,9 +195,10 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
   4. Ensure the depth is at least 3 levels (Root -> Concept -> Details -> Examples).
   5. Cover ALL major points in the text.`;
 
-  try {
+  const operation = async () => {
+    // Use Flash Lite for MindMap as well to save quota
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-lite-latest",
       contents: `Notes to map:\n${content}`,
       config: {
         responseMimeType: "application/json",
@@ -192,15 +209,16 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
     const jsonText = response.text;
     if (!jsonText) throw new Error("No text returned from API");
     return JSON.parse(jsonText) as MindMapNode;
+  };
+
+  try {
+    return await retryWithBackoff(operation);
   } catch (error) {
     console.error("MindMap Generation Error:", error);
-    // For mindmap, we might return an error node, but it's better to throw 
-    // if it's a quota error so the UI shows the "Reset Key" or "Retry" screen
     const handledErr = handleGeminiError(error);
     if (handledErr.message.includes("Quota") || handledErr.message.includes("Invalid")) {
         throw handledErr;
     }
-
     return {
       id: "error",
       label: "Error generating map",
@@ -212,20 +230,23 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
 
 export const generateExplanation = async (content: string): Promise<string> => {
   const ai = getClient();
+  const operation = async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-flash-lite-latest",
+        contents: `Explain the following biology notes in a structured, easy-to-read study guide format. Use Markdown. Highlight key terms.
+        
+        Notes:
+        ${content}`,
+        config: {
+          systemInstruction: "You are a helpful study tutor. Summarize and explain the provided notes clearly.",
+        },
+      });
+      return response.text || "Failed to generate explanation.";
+  };
+
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Explain the following biology notes in a structured, easy-to-read study guide format. Use Markdown. Highlight key terms.
-      
-      Notes:
-      ${content}`,
-      config: {
-        systemInstruction: "You are a helpful study tutor. Summarize and explain the provided notes clearly.",
-      },
-    });
-    return response.text || "Failed to generate explanation.";
+    return await retryWithBackoff(operation);
   } catch (error) {
-    console.error("Explanation Error:", error);
     const handled = handleGeminiError(error);
     return `Error: ${handled.message}`;
   }
@@ -233,25 +254,28 @@ export const generateExplanation = async (content: string): Promise<string> => {
 
 export const generateDiagram = async (topic: string): Promise<string | null> => {
   const ai = getClient();
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents: {
-        parts: [{ text: `A clean, professional medical illustration of ${topic}. White background, educational textbook style, high detail. IMPORTANT: Do not include any text, labels, arrows, or writing on the image. Purely visual anatomical representation.` }]
-      },
-      config: {}
-    });
+  const operation = async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: {
+          parts: [{ text: `A clean, professional medical illustration of ${topic}. White background, educational textbook style, high detail. IMPORTANT: Do not include any text, labels, arrows, or writing on the image. Purely visual anatomical representation.` }]
+        },
+        config: {}
+      });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
-    }
-    return null;
+      return null;
+  };
+
+  try {
+    // Image gen is heavy, we only retry once
+    return await retryWithBackoff(operation, 1, 3000);
   } catch (error) {
     console.error("Image Gen Error:", error);
-    // Images are optional, return null but log the clean error
-    console.error(handleGeminiError(error).message);
     return null;
   }
 };
