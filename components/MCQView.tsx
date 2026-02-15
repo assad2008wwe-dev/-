@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Section, Difficulty, Question } from '../types';
-import { generateMCQ } from '../services/geminiService';
+import { generateMCQ, resetApiKey } from '../services/geminiService';
 import { Loader2, CheckCircle, XCircle, ChevronRight, RefreshCw, AlertCircle, Activity, ArrowLeft, Settings2 } from 'lucide-react';
 
 interface Props {
@@ -19,9 +19,11 @@ const MCQView: React.FC<Props> = ({ section, onBack }) => {
   const [score, setScore] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const startQuiz = async () => {
     setLoading(true);
+    setError(null);
     try {
       const qs = await generateMCQ(section.content, difficulty, questionCount);
       setQuestions(qs);
@@ -31,8 +33,7 @@ const MCQView: React.FC<Props> = ({ section, onBack }) => {
       setQuizCompleted(false);
     } catch (e: any) {
       console.error(e);
-      // Show the actual error message to the user
-      alert(`Failed to generate quiz: ${e.message || "Unknown error"}`);
+      setError(e.message || "Unknown error occurred during generation.");
     } finally {
       setLoading(false);
     }
@@ -68,6 +69,41 @@ const MCQView: React.FC<Props> = ({ section, onBack }) => {
         </div>
         <h3 className="text-xl font-bold text-slate-200 mb-2">Creating Quiz</h3>
         <p className="text-sm">Analyzing {section.title}...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 sm:p-8 max-w-xl mx-auto flex flex-col items-center justify-center h-full text-center">
+        <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl w-full">
+          <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">Quiz Generation Failed</h3>
+          <p className="text-slate-400 mb-8 text-sm break-words">{error}</p>
+          
+          <div className="flex flex-col gap-3">
+             <button 
+               onClick={() => { setError(null); startQuiz(); }}
+               className="w-full py-3.5 bg-rose-500 hover:bg-rose-400 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+             >
+               <RefreshCw className="w-4 h-4" /> Try Again
+             </button>
+             
+             <button 
+               onClick={resetApiKey}
+               className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl font-semibold transition-colors"
+             >
+               Reset API Key
+             </button>
+
+             <button 
+               onClick={onBack}
+               className="w-full py-3.5 text-slate-500 hover:text-white transition-colors"
+             >
+               Go Back
+             </button>
+          </div>
+        </div>
       </div>
     );
   }

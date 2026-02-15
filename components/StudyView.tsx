@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Section, MindMapNode } from '../types';
-import { generateMindMap, generateDiagram } from '../services/geminiService';
+import { generateMindMap, generateDiagram, resetApiKey } from '../services/geminiService';
 import { Loader2, ArrowLeft, Image as ImageIcon, BookOpen, Share2, ZoomIn, ZoomOut, Maximize2, AlertTriangle } from 'lucide-react';
 import MindMap from './MindMap';
 
@@ -89,9 +89,26 @@ const StudyView: React.FC<Props> = ({ section, onBack }) => {
                     <p className="text-slate-400">Structuring knowledge...</p>
                 </div>
             ) : error ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-2">
-                   <AlertTriangle className="w-8 h-8 text-amber-500" />
-                   <p>{error}</p>
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4 p-8 text-center">
+                   <AlertTriangle className="w-12 h-12 text-amber-500" />
+                   <div className="max-w-md">
+                       <h3 className="text-lg font-bold text-slate-200 mb-2">Unable to Load Map</h3>
+                       <p className="text-sm mb-6">{error}</p>
+                       <div className="flex flex-col gap-2">
+                           <button 
+                             onClick={() => window.location.reload()}
+                             className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg border border-slate-700"
+                           >
+                             Retry
+                           </button>
+                           <button 
+                             onClick={resetApiKey}
+                             className="py-2 px-4 text-rose-400 hover:text-rose-300 text-sm font-medium"
+                           >
+                             Reset API Key
+                           </button>
+                       </div>
+                   </div>
                 </div>
             ) : mindMapData ? (
                 <div 
