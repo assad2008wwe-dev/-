@@ -1,0 +1,5 @@
+{
+  "name": "BioMaster AI",
+  "description": "An intelligent biology study companion using Gemini to generate quizzes and visual explanations from course notes.",
+  "requestFramePermissions": []
+}
