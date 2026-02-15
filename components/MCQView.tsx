@@ -29,8 +29,10 @@ const MCQView: React.FC<Props> = ({ section, onBack }) => {
       setCurrentIndex(0);
       setScore(0);
       setQuizCompleted(false);
-    } catch (e) {
-      alert("Failed to generate quiz. Please try again.");
+    } catch (e: any) {
+      console.error(e);
+      // Show the actual error message to the user
+      alert(`Failed to generate quiz: ${e.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }

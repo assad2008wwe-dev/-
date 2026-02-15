@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Section, MindMapNode } from '../types';
 import { generateMindMap, generateDiagram } from '../services/geminiService';
-import { Loader2, ArrowLeft, Image as ImageIcon, BookOpen, Share2, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Loader2, ArrowLeft, Image as ImageIcon, BookOpen, Share2, ZoomIn, ZoomOut, Maximize2, AlertTriangle } from 'lucide-react';
 import MindMap from './MindMap';
 
 interface Props {
@@ -15,19 +15,27 @@ const StudyView: React.FC<Props> = ({ section, onBack }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
     const loadContent = async () => {
       try {
+        setError(null);
         const data = await generateMindMap(section.content);
         if (mounted) {
+          if (data.id === 'error') {
+            setError(data.label); // Use fallback label as error
+          }
           setMindMapData(data);
           setLoadingMap(false);
           generateMainImage();
         }
-      } catch (e) {
-        if (mounted) setLoadingMap(false);
+      } catch (e: any) {
+        if (mounted) {
+            setError(e.message || "Failed to load");
+            setLoadingMap(false);
+        }
       }
     };
     loadContent();
@@ -79,6 +87,11 @@ const StudyView: React.FC<Props> = ({ section, onBack }) => {
                 <div className="flex flex-col items-center justify-center h-full">
                     <Loader2 className="w-12 h-12 animate-spin text-rose-500 mb-4" />
                     <p className="text-slate-400">Structuring knowledge...</p>
+                </div>
+            ) : error ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-2">
+                   <AlertTriangle className="w-8 h-8 text-amber-500" />
+                   <p>{error}</p>
                 </div>
             ) : mindMapData ? (
                 <div 

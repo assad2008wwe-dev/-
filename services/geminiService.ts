@@ -28,7 +28,7 @@ export const hasApiKey = () => !!internalApiKey;
 
 const getClient = () => {
   if (!internalApiKey) {
-    throw new Error("API Key is missing. Please provide a valid Gemini API Key.");
+    throw new Error("API Key is missing. Please enter your API Key in Settings.");
   }
   return new GoogleGenAI({ apiKey: internalApiKey });
 };
@@ -43,24 +43,31 @@ export const generateMCQ = async (
   const systemPrompt = `You are an expert biology professor. Create a multiple choice test based EXACTLY and ONLY on the provided reference notes. 
   Do not introduce outside information unless it is general common knowledge required to understand the context.
   Create ${count} questions. Difficulty level: ${difficulty}.
-  Return the response in a structured JSON format.`;
+  Return the response in a structured JSON object with a 'questions' array.`;
 
+  // Using a root object is often more stable than a root array for strict schemas
   const schema: Schema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        id: { type: Type.INTEGER },
-        text: { type: Type.STRING },
-        options: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
+    type: Type.OBJECT,
+    properties: {
+      questions: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.INTEGER },
+            text: { type: Type.STRING },
+            options: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
+            correctAnswerIndex: { type: Type.INTEGER },
+            explanation: { type: Type.STRING },
+          },
+          required: ['id', 'text', 'options', 'correctAnswerIndex'],
         },
-        correctAnswerIndex: { type: Type.INTEGER },
-        explanation: { type: Type.STRING },
-      },
-      required: ['id', 'text', 'options', 'correctAnswerIndex'],
+      }
     },
+    required: ['questions']
   };
 
   try {
@@ -75,8 +82,13 @@ export const generateMCQ = async (
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("No text returned");
-    return JSON.parse(jsonText) as Question[];
+    if (!jsonText) throw new Error("No text returned from API");
+    
+    const parsed = JSON.parse(jsonText);
+    if (!parsed.questions || !Array.isArray(parsed.questions)) {
+       throw new Error("Invalid format returned");
+    }
+    return parsed.questions as Question[];
   } catch (error) {
     console.error("MCQ Generation Error:", error);
     throw error;
@@ -86,31 +98,12 @@ export const generateMCQ = async (
 export const generateMindMap = async (content: string): Promise<MindMapNode> => {
   const ai = getClient();
   
-  const schema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING },
-      label: { type: Type.STRING },
-      details: { type: Type.STRING },
-      children: {
-        type: Type.ARRAY,
-        items: {
-           type: Type.OBJECT,
-           properties: {
-             id: { type: Type.STRING },
-             label: { type: Type.STRING },
-             details: { type: Type.STRING },
-             children: { type: Type.ARRAY, items: { type: Type.OBJECT } }
-           }
-        }
-      }
-    },
-    required: ['id', 'label', 'children']
-  };
+  // NOTE: We are intentionally NOT using responseSchema here because recursive schemas (children containing children) 
+  // can cause validation errors with the current API version. We rely on the prompt and JSON mode.
 
   const systemPrompt = `You are an expert biology tutor. Analyze the provided notes and create a detailed, hierarchical mind map structure.
   
-  The Output must be a JSON object representing the root node.
+  The Output must be a valid JSON object representing the root node.
   Structure:
   {
     "id": "root",
@@ -139,7 +132,7 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("No text returned");
+    if (!jsonText) throw new Error("No text returned from API");
     return JSON.parse(jsonText) as MindMapNode;
   } catch (error) {
     console.error("MindMap Generation Error:", error);
@@ -147,14 +140,13 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
     return {
       id: "error",
       label: "Error generating map",
-      details: "Please try again.",
+      details: "Please check your API key or try again.",
       children: []
     };
   }
 };
 
 export const generateExplanation = async (content: string): Promise<string> => {
-  // Keeping this for legacy support if needed, but we are moving to MindMap
   const ai = getClient();
   try {
     const response = await ai.models.generateContent({
