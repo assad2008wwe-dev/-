@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SECTIONS } from './constants';
 import { Section } from './types';
 import SectionCard from './components/SectionCard';
 import MCQView from './components/MCQView';
 import StudyView from './components/StudyView';
-import { BookOpenCheck, BrainCircuit, LayoutGrid, Search, User } from 'lucide-react';
+import ApiKeyModal from './components/ApiKeyModal';
+import { hasApiKey } from './services/geminiService';
+import { BookOpenCheck, BrainCircuit, LayoutGrid, Search, User, Settings } from 'lucide-react';
 
 enum AppView {
   DASHBOARD = 'DASHBOARD',
@@ -16,6 +18,18 @@ enum AppView {
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+
+  useEffect(() => {
+    // Check for API key on mount
+    if (!hasApiKey()) {
+      setShowApiKeyModal(true);
+    }
+  }, []);
+
+  const handleApiKeySave = () => {
+    setShowApiKeyModal(false);
+  };
 
   const handleSectionClick = (section: Section) => {
     setSelectedSection(section);
@@ -32,16 +46,29 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-screen bg-slate-900 flex overflow-hidden text-slate-100 font-sans selection:bg-rose-500 selection:text-white">
+    <div className="h-screen bg-slate-900 flex overflow-hidden text-slate-100 font-sans selection:bg-rose-500 selection:text-white relative">
       
+      {showApiKeyModal && <ApiKeyModal onSave={handleApiKeySave} onClose={() => setShowApiKeyModal(false)} />}
+
       {/* Sidebar (Desktop) / Hidden on Mobile mostly */}
       <aside className="hidden lg:flex flex-col w-20 bg-slate-900 border-r border-slate-800 items-center py-8 gap-8">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center shadow-lg shadow-rose-500/20">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center shadow-lg shadow-rose-500/20 cursor-pointer" onClick={handleBackToDashboard}>
             <LayoutGrid className="w-6 h-6 text-white" />
         </div>
         <div className="flex flex-col gap-6">
-            <button className="p-3 rounded-xl bg-slate-800 text-white shadow-md"><LayoutGrid className="w-5 h-5" /></button>
-            <button className="p-3 rounded-xl hover:bg-slate-800 text-slate-500 transition-colors"><User className="w-5 h-5" /></button>
+            <button 
+              onClick={handleBackToDashboard}
+              className={`p-3 rounded-xl transition-colors ${view === AppView.DASHBOARD ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:bg-slate-800'}`}
+            >
+              <LayoutGrid className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => setShowApiKeyModal(true)}
+              className="p-3 rounded-xl hover:bg-slate-800 text-slate-500 transition-colors"
+              title="API Key Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
         </div>
       </aside>
 
@@ -55,9 +82,17 @@ const App: React.FC = () => {
                     {/* Header */}
                     <div className="flex justify-between items-center mb-8">
                         <h1 className="text-2xl font-bold">Course Units</h1>
-                        <button className="p-2 bg-slate-800 rounded-full text-slate-400">
-                            <Search className="w-5 h-5" />
-                        </button>
+                        <div className="flex gap-2">
+                           <button 
+                             onClick={() => setShowApiKeyModal(true)}
+                             className="lg:hidden p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white"
+                           >
+                             <Settings className="w-5 h-5" />
+                           </button>
+                           <button className="p-2 bg-slate-800 rounded-full text-slate-400">
+                               <Search className="w-5 h-5" />
+                           </button>
+                        </div>
                     </div>
 
                     {/* Promo Card */}

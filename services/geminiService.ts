@@ -1,11 +1,37 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { GeneratedContent, Question, Difficulty, MindMapNode } from "../types";
 
-// NOTE: In a real production app, you should not expose the API key on the client side.
-// However, per the prompt instructions, we are using process.env.API_KEY.
-const apiKey = process.env.API_KEY || '';
+// Initialize with env variable if available, otherwise check local storage
+let internalApiKey = process.env.API_KEY || '';
 
-const getClient = () => new GoogleGenAI({ apiKey });
+if (!internalApiKey && typeof window !== 'undefined') {
+  try {
+    const stored = localStorage.getItem('biomaster_gemini_key');
+    if (stored) internalApiKey = stored;
+  } catch (e) {
+    // Ignore local storage errors
+  }
+}
+
+export const setApiKey = (key: string) => {
+  internalApiKey = key;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('biomaster_gemini_key', key);
+    } catch (e) {
+      console.warn('Failed to save API key to local storage');
+    }
+  }
+};
+
+export const hasApiKey = () => !!internalApiKey;
+
+const getClient = () => {
+  if (!internalApiKey) {
+    throw new Error("API Key is missing. Please provide a valid Gemini API Key.");
+  }
+  return new GoogleGenAI({ apiKey: internalApiKey });
+};
 
 export const generateMCQ = async (
   content: string,
@@ -69,8 +95,7 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
       children: {
         type: Type.ARRAY,
         items: {
-           type: Type.OBJECT, // Recursive definition isn't directly supported in simple schema objects this way, but Gemini handles it well with loose object typing for children in prompt instructions or simplified schema.
-           // We will define the structure in the prompt strongly.
+           type: Type.OBJECT,
            properties: {
              id: { type: Type.STRING },
              label: { type: Type.STRING },
@@ -110,7 +135,6 @@ export const generateMindMap = async (content: string): Promise<MindMapNode> => 
       config: {
         responseMimeType: "application/json",
         systemInstruction: systemPrompt,
-        // We skip strict schema validation for recursive types to avoid complex Type definition issues, relying on the prompt and mimeType.
       },
     });
 
